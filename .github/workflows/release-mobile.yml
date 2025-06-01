@@ -123,9 +123,15 @@ jobs:
                 }
               }
             ],
+            "api_key": [
+              {
+                "current_key": "DUMMY_API_KEY"
+              }
+            ],
             "configuration_version": "1"
           }
           EOF
+
 
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
