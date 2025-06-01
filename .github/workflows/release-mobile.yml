@@ -51,38 +51,38 @@ jobs:
             echo "ENVIRONMENT=" >> $GITHUB_OUTPUT
           fi
 
-  build-ios-web:
-    needs:
-      - output-env
-    runs-on: ubuntu-24.04-arm
-    environment: ${{ needs.output-env.outputs.ENVIRONMENT }}
-    outputs:
-      RELEASE_VERSION: ${{ steps.version.outputs.APP_VERSION }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Version
-        id: version
-        uses: ./.github/actions/setup-version
-      - name: Setup Node.js
-        uses: ./.github/actions/setup-node
-      - name: Setup @sentry/cli
-        uses: ./.github/actions/setup-sentry
-      - name: Build Mobile
-        run: yarn affine @affine/ios build
-        env:
-          PUBLIC_PATH: '/'
-          MIXPANEL_TOKEN: ${{ secrets.MIXPANEL_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: 'affine'
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          SENTRY_RELEASE: ${{ steps.version.outputs.APP_VERSION }}
-          RELEASE_VERSION: ${{ steps.version.outputs.APP_VERSION }}
-      - name: Upload ios artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios
-          path: packages/frontend/apps/ios/dist
+  # build-ios-web:
+  #   needs:
+  #     - output-env
+  #   runs-on: ubuntu-24.04-arm
+  #   environment: ${{ needs.output-env.outputs.ENVIRONMENT }}
+  #   outputs:
+  #     RELEASE_VERSION: ${{ steps.version.outputs.APP_VERSION }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Setup Version
+  #       id: version
+  #       uses: ./.github/actions/setup-version
+  #     - name: Setup Node.js
+  #       uses: ./.github/actions/setup-node
+  #     - name: Setup @sentry/cli
+  #       uses: ./.github/actions/setup-sentry
+  #     - name: Build Mobile
+  #       run: yarn affine @affine/ios build
+  #       env:
+  #         PUBLIC_PATH: '/'
+  #         MIXPANEL_TOKEN: ${{ secrets.MIXPANEL_TOKEN }}
+  #         SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+  #         SENTRY_PROJECT: 'affine'
+  #         SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+  #         SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+  #         SENTRY_RELEASE: ${{ steps.version.outputs.APP_VERSION }}
+  #         RELEASE_VERSION: ${{ steps.version.outputs.APP_VERSION }}
+  #     - name: Upload ios artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: ios
+  #         path: packages/frontend/apps/ios/dist
 
   build-android-web:
     runs-on: ubuntu-24.04-arm
@@ -117,80 +117,80 @@ jobs:
           name: android
           path: packages/frontend/apps/android/dist
 
-  determine-ios-runner:
-    runs-on: ubuntu-latest
-    needs:
-      - build-ios-web
-    outputs:
-      RUNNER: ${{ steps.runner.outputs.RUNNER }}
-    steps:
-      - name: Determine Runner
-        id: runner
-        # Randomly pick runner with 80% chance for blaze/macos-14 and 20% chance for namespace-profile-macos
-        # blaze/macos-14 is free but has limited concurrency
-        run: |
-          RANDOM_NUMBER=$(( $RANDOM % 100 + 1 ))
-          if [ $RANDOM_NUMBER -le 20 ]; then
-            echo "Selected namespace-profile-macos (20% probability)"
-            echo "RUNNER=namespace-profile-macos" >> $GITHUB_OUTPUT
-          else
-            echo "Selected blaze/macos-14 (80% probability)"
-            echo "RUNNER=blaze/macos-14" >> $GITHUB_OUTPUT
-          fi
+  # determine-ios-runner:
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - build-ios-web
+  #   outputs:
+  #     RUNNER: ${{ steps.runner.outputs.RUNNER }}
+  #   steps:
+  #     - name: Determine Runner
+  #       id: runner
+  #       # Randomly pick runner with 80% chance for blaze/macos-14 and 20% chance for namespace-profile-macos
+  #       # blaze/macos-14 is free but has limited concurrency
+  #       run: |
+  #         RANDOM_NUMBER=$(( $RANDOM % 100 + 1 ))
+  #         if [ $RANDOM_NUMBER -le 20 ]; then
+  #           echo "Selected namespace-profile-macos (20% probability)"
+  #           echo "RUNNER=namespace-profile-macos" >> $GITHUB_OUTPUT
+  #         else
+  #           echo "Selected blaze/macos-14 (80% probability)"
+  #           echo "RUNNER=blaze/macos-14" >> $GITHUB_OUTPUT
+  #         fi
 
-  ios:
-    runs-on: ${{ github.ref_name == 'canary' && 'macos-latest' || needs.determine-ios-runner.outputs.RUNNER }}
-    needs:
-      - determine-ios-runner
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download mobile artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ios
-          path: packages/frontend/apps/ios/dist
-      - name: Setup Node.js
-        uses: ./.github/actions/setup-node
-        timeout-minutes: 10
-        with:
-          extra-flags: workspaces focus @affine/ios
-          playwright-install: false
-          electron-install: false
-          hard-link-nm: false
-          enableScripts: false
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: 16.2
-      - name: Install Swiftformat
-        run: brew install swiftformat
-      - name: Cap sync
-        run: yarn workspace @affine/ios sync
-      - name: Signing By Apple Developer ID
-        uses: apple-actions/import-codesign-certs@v5
-        id: import-codesign-certs
-        with:
-          p12-file-base64: ${{ secrets.CERTIFICATES_P12_MOBILE }}
-          p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD_MOBILE }}
-      - name: Setup Rust
-        uses: ./.github/actions/build-rust
-        with:
-          target: 'aarch64-apple-ios'
-          package: 'affine_mobile_native'
-          no-build: 'true'
-      - name: Testflight
-        if: ${{ env.BUILD_TYPE != 'stable' }}
-        working-directory: packages/frontend/apps/ios/App
-        run: |
-          echo -n "${{ env.BUILD_PROVISION_PROFILE }}" | base64 --decode -o $PP_PATH
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
-          fastlane beta
-        env:
-          BUILD_PROVISION_PROFILE: ${{ secrets.BUILD_PROVISION_PROFILE }}
-          PP_PATH: ${{ runner.temp }}/build_pp.mobileprovision
-          APPLE_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPLE_STORE_CONNECT_API_KEY_ID }}
-          APPLE_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APPLE_STORE_CONNECT_API_ISSUER_ID }}
-          APPLE_STORE_CONNECT_API_KEY: ${{ secrets.APPLE_STORE_CONNECT_API_KEY }}
+  # ios:
+  #   runs-on: ${{ github.ref_name == 'canary' && 'macos-latest' || needs.determine-ios-runner.outputs.RUNNER }}
+  #   needs:
+  #     - determine-ios-runner
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Download mobile artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: ios
+  #         path: packages/frontend/apps/ios/dist
+  #     - name: Setup Node.js
+  #       uses: ./.github/actions/setup-node
+  #       timeout-minutes: 10
+  #       with:
+  #         extra-flags: workspaces focus @affine/ios
+  #         playwright-install: false
+  #         electron-install: false
+  #         hard-link-nm: false
+  #         enableScripts: false
+  #     - uses: maxim-lobanov/setup-xcode@v1
+  #       with:
+  #         xcode-version: 16.2
+  #     - name: Install Swiftformat
+  #       run: brew install swiftformat
+  #     - name: Cap sync
+  #       run: yarn workspace @affine/ios sync
+  #     - name: Signing By Apple Developer ID
+  #       uses: apple-actions/import-codesign-certs@v5
+  #       id: import-codesign-certs
+  #       with:
+  #         p12-file-base64: ${{ secrets.CERTIFICATES_P12_MOBILE }}
+  #         p12-password: ${{ secrets.CERTIFICATES_P12_PASSWORD_MOBILE }}
+  #     - name: Setup Rust
+  #       uses: ./.github/actions/build-rust
+  #       with:
+  #         target: 'aarch64-apple-ios'
+  #         package: 'affine_mobile_native'
+  #         no-build: 'true'
+  #     - name: Testflight
+  #       if: ${{ env.BUILD_TYPE != 'stable' }}
+  #       working-directory: packages/frontend/apps/ios/App
+  #       run: |
+  #         echo -n "${{ env.BUILD_PROVISION_PROFILE }}" | base64 --decode -o $PP_PATH
+  #         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+  #         cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+  #         fastlane beta
+  #       env:
+  #         BUILD_PROVISION_PROFILE: ${{ secrets.BUILD_PROVISION_PROFILE }}
+  #         PP_PATH: ${{ runner.temp }}/build_pp.mobileprovision
+  #         APPLE_STORE_CONNECT_API_KEY_ID: ${{ secrets.APPLE_STORE_CONNECT_API_KEY_ID }}
+  #         APPLE_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APPLE_STORE_CONNECT_API_ISSUER_ID }}
+  #         APPLE_STORE_CONNECT_API_KEY: ${{ secrets.APPLE_STORE_CONNECT_API_KEY }}
 
   android:
     runs-on: ubuntu-latest
@@ -262,14 +262,24 @@ jobs:
           AFFINE_ANDROID_KEYSTORE_ALIAS_PASSWORD: ${{ secrets.AFFINE_ANDROID_KEYSTORE_ALIAS_PASSWORD }}
           AFFINE_ANDROID_SIGN_KEYSTORE: ${{ secrets.AFFINE_ANDROID_SIGN_KEYSTORE }}
           VERSION_NAME: ${{ steps.version.outputs.APP_VERSION }}
-      - name: Upload to Google Play
-        uses: r0adkll/upload-google-play@v1
-        if: ${{ env.BUILD_TARGET == 'distribution' }}
+      # - name: Upload to Google Play
+      #   uses: r0adkll/upload-google-play@v1
+      #   if: ${{ env.BUILD_TARGET == 'distribution' }}
+      #   with:
+      #     serviceAccountJson: ${{ steps.auth.outputs.credentials_file_path }}
+      #     packageName: app.affine.pro
+      #     releaseName: ${{ steps.version.outputs.APP_VERSION }}
+      #     releaseFiles: packages/frontend/apps/android/App/app/build/outputs/bundle/${{ env.BUILD_TYPE }}Release/app-${{ env.BUILD_TYPE }}-release-signed.aab
+      #     track: internal
+      #     status: draft
+      #     existingEditId: ${{ steps.bump.outputs.EDIT_ID }}
+      - name: Build APK
+        run: |
+          cd packages/frontend/apps/android/App
+          ./gradlew assembleRelease
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
-          serviceAccountJson: ${{ steps.auth.outputs.credentials_file_path }}
-          packageName: app.affine.pro
-          releaseName: ${{ steps.version.outputs.APP_VERSION }}
-          releaseFiles: packages/frontend/apps/android/App/app/build/outputs/bundle/${{ env.BUILD_TYPE }}Release/app-${{ env.BUILD_TYPE }}-release-signed.aab
-          track: internal
-          status: draft
-          existingEditId: ${{ steps.bump.outputs.EDIT_ID }}
+          name: affine-apk
+          path: packages/frontend/apps/android/App/app/build/outputs/apk/release/app-release.apk
+
