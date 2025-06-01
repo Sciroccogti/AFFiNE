@@ -113,10 +113,20 @@ jobs:
               "project_number": "123456789",
               "project_id": "dummy-project"
             },
-            "client": [],
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:123456789:android:abcdef123456",
+                  "android_client_info": {
+                    "package_name": "app.affine.pro"
+                  }
+                }
+              }
+            ],
             "configuration_version": "1"
           }
           EOF
+
       - name: Setup Node.js
         uses: ./.github/actions/setup-node
         timeout-minutes: 10
